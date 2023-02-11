@@ -2,3 +2,5 @@
 /dist/
 *.log
 play.js
+*.apkg
+example.zip
