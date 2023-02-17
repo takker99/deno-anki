@@ -1,5 +1,4 @@
 import type { InputFormats, JSZip, SqlJsStatic } from "./deps.ts";
-import { sha1 } from "./hash.ts";
 import * as Schema from "./schema.ts";
 
 export interface Media {
@@ -64,10 +63,10 @@ export interface CollectionInit {
   models: NoteTypeWithNotes[];
 }
 
-export const makeCollection = async (
+export const makeCollection = (
   init: CollectionInit,
   sql: Pick<SqlJsStatic, "Database">,
-): Promise<Uint8Array> => {
+): Uint8Array => {
   const db = new sql.Database();
 
   const conf: Schema.Conf = {
@@ -97,7 +96,7 @@ export const makeCollection = async (
       const model = makeNoteType(noteType, modelIdGen);
       models[model.id] = model;
       for (const note of notes_) {
-        const noteScheme = await makeNote(note, noteType.id, noteIdGen);
+        const noteScheme = makeNote(note, noteType.id, noteIdGen);
         notes[noteScheme.id] = noteScheme;
         for (
           const card of makeCards(
@@ -327,16 +326,16 @@ export const makePackage = (
 };
 
 const separator = "\u001F";
-const makeNote = async (
+const makeNote = (
   note: Note,
   modelId: number,
   idGen: IdGen,
-): Promise<Schema.Note> => {
+): Schema.Note => {
   const flds = note.fields.join(separator);
 
   return {
     id: idGen(note.id),
-    guid: note.guid ?? await sha1(flds),
+    guid: note.guid ?? makeNoteGUID(),
     tags: note.tags?.map?.((tag) => tag.replaceAll(" ", "_"))?.join?.(" ") ??
       "",
     mid: modelId,
@@ -548,4 +547,18 @@ const makeIdGenerator = (): IdGen => {
     }
     return ++counter;
   };
+};
+
+const table =
+  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&()*+,-./:;<=>?@[]^_`{|}~";
+export const makeNoteGUID = (): string => {
+  let n = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+  let buf = "";
+  while (n > 0) {
+    const q = Math.floor(n / table.length);
+    const r = n % table.length;
+    buf += table[r];
+    n = q;
+  }
+  return buf.split("").reverse().join("");
 };
