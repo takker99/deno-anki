@@ -46,6 +46,7 @@ export interface NoteTypeWithNotes extends NoteType {
 
 export interface Field {
   name: string;
+  description?: string;
   rtl?: boolean;
   font?: string;
   fontSize?: number;
@@ -491,6 +492,7 @@ const makeField = (field: string | Field, ord: number): Schema.Field =>
   typeof field === "string"
     ? ({
       name: field,
+      description: "",
       media: [],
       sticky: false,
       rtl: false,
@@ -500,6 +502,7 @@ const makeField = (field: string | Field, ord: number): Schema.Field =>
     })
     : ({
       name: field.name,
+      description: field.description ?? "",
       media: [],
       sticky: false,
       rtl: field.rtl ?? false,

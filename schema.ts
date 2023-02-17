@@ -498,16 +498,25 @@ export interface Model {
 export interface Field {
   /**  display font */
   font: string;
+
   /**  array of media. appears to be unused */
   media: unknown[];
+
   /**  field name */
   name: string;
+
+  /** field description */
+  description: string;
+
   /**  ordinal of the field - goes from 0 to num fields -1 */
   ord: number;
+
   /**  boolean, right-to-left script */
   rtl: boolean;
+
   /**  font size */
   size: number;
+
   /**  sticky fields retain the value that was last added when adding new notes */
   sticky: boolean;
 }
