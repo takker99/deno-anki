@@ -2,20 +2,9 @@ import type { InputFormats, JSZip, SqlJsStatic } from "./deps.ts";
 import { sha1 } from "./hash.ts";
 import * as Schema from "./schema.ts";
 
-export interface Init {
-  template: string;
-  sql: SqlJsStatic;
-}
-
 export interface Media {
   filename: string;
   data: InputFormats;
-}
-
-export interface Fields {
-  front: string;
-  back: string;
-  tag?: string | string[];
 }
 
 export interface Deck {
