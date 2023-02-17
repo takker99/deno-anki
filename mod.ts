@@ -39,6 +39,8 @@ export interface NoteType {
   latex?: [string, string];
   css?: string;
   isCloze?: boolean;
+}
+export interface NoteTypeWithNotes extends NoteType {
   notes: Note[];
 }
 
@@ -58,7 +60,7 @@ export interface Template {
 
 export interface CollectionInit {
   decks: Deck[];
-  models: NoteType[];
+  models: NoteTypeWithNotes[];
 }
 
 export const makeCollection = async (
@@ -348,7 +350,7 @@ const makeNote = async (
 };
 
 const makeCards = (
-  noteType: Omit<NoteType, "notes">,
+  noteType: NoteType,
   noteId: number,
   fields: string[],
   idGen: IdGen,
@@ -358,7 +360,7 @@ const makeCards = (
     : makeNormalCards(noteType, noteId, fields, idGen);
 
 const makeNormalCards = (
-  noteType: Omit<NoteType, "notes">,
+  noteType: NoteType,
   noteId: number,
   fields: string[],
   idGen: IdGen,
@@ -388,7 +390,7 @@ const makeNormalCards = (
 };
 
 const makeClozeCards = (
-  noteType: Omit<NoteType, "notes">,
+  noteType: NoteType,
   noteId: number,
   fields: string[],
   idGen: IdGen,
@@ -461,7 +463,7 @@ const makeCard = (
 });
 
 const makeNoteType = (
-  noteType: Omit<NoteType, "notes">,
+  noteType: NoteType,
   idGen: IdGen,
 ): Schema.Model => ({
   vers: [],
