@@ -63,7 +63,7 @@ describe("Anki package", () => {
 
     // Create deck as in previous example
     const id = new Date().getTime();
-    const ankiDB = await makeCollection(
+    const ankiDB = makeCollection(
       {
         decks: [deck],
         models: [{
@@ -132,19 +132,20 @@ describe("Anki package", () => {
       ["Card front side 3", "Card back side 3"],
     ];
     const id = new Date().getTime();
-    const ankiDB = await makeCollection(
+    const ankiDB = makeCollection(
       {
         decks: [deck],
         models: [{
           ...model,
-          notes: cards.map(([front, back, tags]) => ({
-            fields: [front, back],
-            tags,
-            // HEAD
-            id,
-            //
-            created: id,
-          } //1b630d33a2a9b04470f01d04d6544e979f2e2d17
+          notes: cards.map(([front, back, tags]) => (
+            {
+              fields: [front, back],
+              tags,
+              // HEAD
+              id,
+              //
+              created: id,
+            } //1b630d33a2a9b04470f01d04d6544e979f2e2d17
           )),
         }],
       },
@@ -220,19 +221,20 @@ describe("Anki package", () => {
       ["Card front side 4", "Card back side 4"],
     ];
     const id = new Date().getTime();
-    const ankiDB = await makeCollection(
+    const ankiDB = makeCollection(
       {
         decks: [deck],
         models: [{
           ...model,
-          notes: cards.map(([front, back, tags]) => ({
-            fields: [front, back],
-            tags,
-            // HEAD
-            id,
-            //
-            created: id,
-          } //1b630d33a2a9b04470f01d04d6544e979f2e2d17
+          notes: cards.map(([front, back, tags]) => (
+            {
+              fields: [front, back],
+              tags,
+              // HEAD
+              id,
+              //
+              created: id,
+            } //1b630d33a2a9b04470f01d04d6544e979f2e2d17
           )),
         }],
       },
