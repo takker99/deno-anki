@@ -18,6 +18,8 @@ export interface Note {
   guid?: string;
   /** note ID */
   id: number;
+  deck: Deck;
+  noteType: NoteType;
   updated?: number;
   tags?: string[];
   fields: string[];
@@ -39,9 +41,6 @@ export interface NoteType {
   css?: string;
   isCloze?: boolean;
 }
-export interface NoteTypeWithNotes extends NoteType {
-  notes: Note[];
-}
 
 export interface Field {
   name: string;
@@ -58,13 +57,8 @@ export interface Template {
   example?: [string, string];
 }
 
-export interface CollectionInit {
-  decks: Deck[];
-  models: NoteTypeWithNotes[];
-}
-
 export const makeCollection = (
-  init: CollectionInit,
+  notes: Note[],
   sql: Pick<SqlJsStatic, "Database">,
 ): Uint8Array => {
   const db = new sql.Database();
@@ -85,36 +79,43 @@ export const makeCollection = (
     timeLim: 0,
   };
 
-  const models: Record<number, Schema.Model> = {};
-  const notes: Record<number, Schema.Note> = {};
-  const cards: Record<number, Schema.Card> = {};
+  const modelSchemas: Record<number, Schema.Model> = {};
+  const noteSchemas: Record<number, Schema.Note> = {};
+  const cardSchemas: Record<number, Schema.Card> = {};
   {
     const modelIdGen = makeIdGenerator();
     const noteIdGen = makeIdGenerator();
     const cardIdGen = makeIdGenerator();
-    for (const { notes: notes_, ...noteType } of init.models) {
+    const noteTypes = new Set(notes.map((note) => note.noteType));
+    const noteTypeIdMap = new Map<NoteType, number>();
+    for (const noteType of noteTypes) {
       const model = makeNoteType(noteType, modelIdGen);
-      models[model.id] = model;
-      for (const note of notes_) {
-        const noteScheme = makeNote(note, noteType.id, noteIdGen);
-        notes[noteScheme.id] = noteScheme;
-        for (
-          const card of makeCards(
-            noteType,
-            noteScheme.id,
-            note.fields,
-            cardIdGen,
-          )
-        ) {
-          cards[card.id] = card;
-        }
+      modelSchemas[model.id] = model;
+      noteTypeIdMap.set(noteType, model.id);
+    }
+    for (const note of notes) {
+      const noteTypeId = noteTypeIdMap.get(note.noteType);
+      if (noteTypeId === undefined) {
+        throw Error("Note type id must be already generated");
+      }
+      const noteScheme = makeNote(note, noteTypeId, noteIdGen);
+      noteSchemas[noteScheme.id] = noteScheme;
+      for (
+        const card of makeCards(
+          note.noteType,
+          noteScheme.id,
+          note.fields,
+          cardIdGen,
+        )
+      ) {
+        cardSchemas[card.id] = card;
       }
     }
   }
 
   const deckIdGen = makeIdGenerator();
   deckIdGen(1);
-  const decks: Record<number, Schema.Deck> = {
+  const deckSchemas: Record<number, Schema.Deck> = {
     1: {
       collapsed: false,
       conf: 1,
@@ -132,7 +133,7 @@ export const makeCollection = (
       usn: 0,
     },
     ...Object.fromEntries(
-      init.decks.map((deck) => {
+      [...new Set(notes.map((note) => note.deck))].map((deck) => {
         const d = makeDeck(deck, deckIdGen);
         return [d.id, d];
       }),
@@ -205,8 +206,8 @@ export const makeCollection = (
       0,
       0,
       '${JSON.stringify(conf)}',
-      '${JSON.stringify(models)}',
-      '${JSON.stringify(decks)}',
+      '${JSON.stringify(modelSchemas)}',
+      '${JSON.stringify(deckSchemas)}',
       '${JSON.stringify(dconf)}',
       '{}'
     );
@@ -276,7 +277,7 @@ export const makeCollection = (
   const noteStmt = db.prepare(
     "insert or replace into notes values(:id,:guid,:mid,:mod,:usn,:tags,:flds,:sfld,:csum,:flags,:data)",
   );
-  for (const note of Object.values(notes)) {
+  for (const note of Object.values(noteSchemas)) {
     noteStmt.run(
       Object.fromEntries(
         [...Object.entries(note)].map((
@@ -289,7 +290,7 @@ export const makeCollection = (
     "insert or replace into cards values(:id,:nid,:did,:ord,:mod,:usn,:type,:queue,:due,:ivl,:factor,:reps,:lapses,:left,:odue,:odid,:flags,:data)",
   );
   for (
-    const card of Object.values(cards)
+    const card of Object.values(cardSchemas)
   ) {
     cardStmt.run(
       Object.fromEntries(

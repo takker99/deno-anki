@@ -39,7 +39,7 @@ describe("Anki package", () => {
     name: "deck-name",
     id: new Date().getTime(),
   };
-  const model: Omit<NoteType, "notes"> = {
+  const noteType: NoteType = {
     name: "Basic",
     id: new Date().getTime(),
     fields: ["Front", "Back"],
@@ -64,16 +64,12 @@ describe("Anki package", () => {
     // Create deck as in previous example
     const id = new Date().getTime();
     const ankiDB = makeCollection(
-      {
-        decks: [deck],
-        models: [{
-          ...model,
-          notes: cards.map(({ front, back }) => ({
-            fields: [front, back],
-            id,
-          })),
-        }],
-      },
+      cards.map(({ front, back }) => ({
+        fields: [front, back],
+        id,
+        deck,
+        noteType,
+      })),
       sql,
     );
 
@@ -133,22 +129,13 @@ describe("Anki package", () => {
     ];
     const id = new Date().getTime();
     const ankiDB = makeCollection(
-      {
-        decks: [deck],
-        models: [{
-          ...model,
-          notes: cards.map(([front, back, tags]) => (
-            {
-              fields: [front, back],
-              tags,
-              // HEAD
-              id,
-              //
-              created: id,
-            } //1b630d33a2a9b04470f01d04d6544e979f2e2d17
-          )),
-        }],
-      },
+      cards.map(([front, back, tags]) => ({
+        fields: [front, back],
+        tags,
+        id,
+        deck,
+        noteType,
+      })),
       sql,
     );
 
@@ -191,7 +178,7 @@ describe("Anki package", () => {
   });
 
   it("check a cloze note type", async () => {
-    const model: Omit<NoteType, "notes"> = {
+    const noteType: NoteType = {
       name: "Basic",
       id: new Date().getTime(),
       fields: ["Front", "Hint"],
@@ -222,22 +209,15 @@ describe("Anki package", () => {
     ];
     const id = new Date().getTime();
     const ankiDB = makeCollection(
-      {
-        decks: [deck],
-        models: [{
-          ...model,
-          notes: cards.map(([front, back, tags]) => (
-            {
-              fields: [front, back],
-              tags,
-              // HEAD
-              id,
-              //
-              created: id,
-            } //1b630d33a2a9b04470f01d04d6544e979f2e2d17
-          )),
-        }],
-      },
+      cards.map(([front, back, tags]) => (
+        {
+          fields: [front, back],
+          tags,
+          id,
+          deck,
+          noteType,
+        }
+      )),
       sql,
     );
 
