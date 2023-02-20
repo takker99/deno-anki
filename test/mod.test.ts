@@ -39,11 +39,11 @@ describe("Anki package", () => {
     name: "deck-name",
     id: new Date().getTime(),
   };
-  const model: Omit<NoteType, "notes"> = {
+  const noteType: NoteType = {
     name: "Basic",
     id: new Date().getTime(),
     fields: ["Front", "Back"],
-    deckId: deck.id,
+    deck,
     templates: [{
       name: "Card 1",
       question: "{{Front}}",
@@ -64,16 +64,12 @@ describe("Anki package", () => {
     // Create deck as in previous example
     const id = new Date().getTime();
     const ankiDB = makeCollection(
-      {
-        decks: [deck],
-        models: [{
-          ...model,
-          notes: cards.map(({ front, back }) => ({
-            fields: [front, back],
-            id,
-          })),
-        }],
-      },
+      cards.map(({ front, back }) => ({
+        fields: [front, back],
+        id,
+        deck,
+        noteType,
+      })),
       sql,
     );
 
@@ -97,9 +93,9 @@ describe("Anki package", () => {
     );
     await Deno.writeFile(destUnpackedDb, ankiDBRestored);
     const db = new DB(destUnpackedDb, { mode: "read" });
-    const result = db.queryEntries<{ flds: string }>(`SELECT
-                                                                    notes.flds as flds
-                                                                    from cards JOIN notes where cards.nid = notes.id ORDER BY cards.id`);
+    const result = db.queryEntries<{ flds: string }>(
+      "SELECT notes.flds as flds from cards JOIN notes where cards.nid = notes.id ORDER BY cards.id",
+    );
     db.close();
 
     // compare content from just created db with original list of cards
@@ -133,22 +129,13 @@ describe("Anki package", () => {
     ];
     const id = new Date().getTime();
     const ankiDB = makeCollection(
-      {
-        decks: [deck],
-        models: [{
-          ...model,
-          notes: cards.map(([front, back, tags]) => (
-            {
-              fields: [front, back],
-              tags,
-              // HEAD
-              id,
-              //
-              created: id,
-            } //1b630d33a2a9b04470f01d04d6544e979f2e2d17
-          )),
-        }],
-      },
+      cards.map(([front, back, tags]) => ({
+        fields: [front, back],
+        tags,
+        id,
+        deck,
+        noteType,
+      })),
       sql,
     );
 
@@ -191,11 +178,11 @@ describe("Anki package", () => {
   });
 
   it("check a cloze note type", async () => {
-    const model: Omit<NoteType, "notes"> = {
+    const noteType: NoteType = {
       name: "Basic",
       id: new Date().getTime(),
       fields: ["Front", "Hint"],
-      deckId: deck.id,
+      deck,
       isCloze: true,
       templates: [{
         name: "Cloze",
@@ -222,22 +209,15 @@ describe("Anki package", () => {
     ];
     const id = new Date().getTime();
     const ankiDB = makeCollection(
-      {
-        decks: [deck],
-        models: [{
-          ...model,
-          notes: cards.map(([front, back, tags]) => (
-            {
-              fields: [front, back],
-              tags,
-              // HEAD
-              id,
-              //
-              created: id,
-            } //1b630d33a2a9b04470f01d04d6544e979f2e2d17
-          )),
-        }],
-      },
+      cards.map(([front, back, tags]) => (
+        {
+          fields: [front, back],
+          tags,
+          id,
+          deck,
+          noteType,
+        }
+      )),
       sql,
     );
 

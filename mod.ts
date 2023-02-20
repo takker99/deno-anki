@@ -18,6 +18,8 @@ export interface Note {
   guid?: string;
   /** note ID */
   id: number;
+  deck: Deck;
+  noteType: NoteType;
   updated?: number;
   tags?: string[];
   fields: string[];
@@ -30,17 +32,14 @@ export interface NoteType {
 
   updated?: number;
 
-  /** @default 1 */
-  deckId?: number;
+  /** @default "default" deck is selected */
+  deck?: Deck;
 
   fields: Field[] | string[];
   templates: Template[];
   latex?: [string, string];
   css?: string;
   isCloze?: boolean;
-}
-export interface NoteTypeWithNotes extends NoteType {
-  notes: Note[];
 }
 
 export interface Field {
@@ -58,13 +57,8 @@ export interface Template {
   example?: [string, string];
 }
 
-export interface CollectionInit {
-  decks: Deck[];
-  models: NoteTypeWithNotes[];
-}
-
 export const makeCollection = (
-  init: CollectionInit,
+  notes: Note[],
   sql: Pick<SqlJsStatic, "Database">,
 ): Uint8Array => {
   const db = new sql.Database();
@@ -85,37 +79,12 @@ export const makeCollection = (
     timeLim: 0,
   };
 
-  const models: Record<number, Schema.Model> = {};
-  const notes: Record<number, Schema.Note> = {};
-  const cards: Record<number, Schema.Card> = {};
+  const deckSchemas: Record<number, Schema.Deck> = {};
+  const deckIdMap = new Map<Deck, number>();
   {
-    const modelIdGen = makeIdGenerator();
-    const noteIdGen = makeIdGenerator();
-    const cardIdGen = makeIdGenerator();
-    for (const { notes: notes_, ...noteType } of init.models) {
-      const model = makeNoteType(noteType, modelIdGen);
-      models[model.id] = model;
-      for (const note of notes_) {
-        const noteScheme = makeNote(note, noteType.id, noteIdGen);
-        notes[noteScheme.id] = noteScheme;
-        for (
-          const card of makeCards(
-            noteType,
-            noteScheme.id,
-            note.fields,
-            cardIdGen,
-          )
-        ) {
-          cards[card.id] = card;
-        }
-      }
-    }
-  }
-
-  const deckIdGen = makeIdGenerator();
-  deckIdGen(1);
-  const decks: Record<number, Schema.Deck> = {
-    1: {
+    const deckIdGen = makeIdGenerator();
+    deckIdGen(1);
+    deckSchemas[1] = {
       collapsed: false,
       conf: 1,
       desc: "",
@@ -130,14 +99,51 @@ export const makeCollection = (
       revToday: [0, 0],
       timeToday: [0, 0],
       usn: 0,
-    },
-    ...Object.fromEntries(
-      init.decks.map((deck) => {
-        const d = makeDeck(deck, deckIdGen);
-        return [d.id, d];
-      }),
-    ),
-  };
+    };
+    const decks = new Set(
+      notes.flatMap((note) =>
+        note.noteType.deck ? [note.deck, note.noteType.deck] : [note.deck]
+      ),
+    );
+    for (const deck of decks) {
+      const d = makeDeck(deck, deckIdGen);
+      deckSchemas[d.id] = d;
+      deckIdMap.set(deck, d.id);
+    }
+  }
+  const modelSchemas: Record<number, Schema.Model> = {};
+  const noteTypeIdMap = new Map<NoteType, number>();
+  {
+    const modelIdGen = makeIdGenerator();
+    const noteTypes = new Set(notes.map((note) => note.noteType));
+    for (const noteType of noteTypes) {
+      const deckId = noteType.deck ? deckIdMap.get(noteType.deck) : undefined;
+      const model = makeNoteType(noteType, deckId, modelIdGen);
+      modelSchemas[model.id] = model;
+      noteTypeIdMap.set(noteType, model.id);
+    }
+  }
+  const noteSchemas: Record<number, Schema.Note> = {};
+  const cardSchemas: Record<number, Schema.Card> = {};
+  {
+    const cardIdGen = makeIdGenerator();
+    const noteIdGen = makeIdGenerator();
+    for (const note of notes) {
+      const noteTypeId = noteTypeIdMap.get(note.noteType);
+      if (noteTypeId === undefined) {
+        throw Error("Note type id must be already generated");
+      }
+      const deckId = deckIdMap.get(note.deck);
+      if (deckId === undefined) {
+        throw Error("Deck id must be already generated");
+      }
+      const n = makeNote(note, noteTypeId, noteIdGen);
+      noteSchemas[n.id] = n;
+      for (const card of makeCards(note, deckId, n.id, cardIdGen)) {
+        cardSchemas[card.id] = card;
+      }
+    }
+  }
 
   const dconf: Record<number, Schema.DConf> = {
     1: {
@@ -205,8 +211,8 @@ export const makeCollection = (
       0,
       0,
       '${JSON.stringify(conf)}',
-      '${JSON.stringify(models)}',
-      '${JSON.stringify(decks)}',
+      '${JSON.stringify(modelSchemas)}',
+      '${JSON.stringify(deckSchemas)}',
       '${JSON.stringify(dconf)}',
       '{}'
     );
@@ -276,7 +282,7 @@ export const makeCollection = (
   const noteStmt = db.prepare(
     "insert or replace into notes values(:id,:guid,:mid,:mod,:usn,:tags,:flds,:sfld,:csum,:flags,:data)",
   );
-  for (const note of Object.values(notes)) {
+  for (const note of Object.values(noteSchemas)) {
     noteStmt.run(
       Object.fromEntries(
         [...Object.entries(note)].map((
@@ -289,7 +295,7 @@ export const makeCollection = (
     "insert or replace into cards values(:id,:nid,:did,:ord,:mod,:usn,:type,:queue,:due,:ivl,:factor,:reps,:lapses,:left,:odue,:odid,:flags,:data)",
   );
   for (
-    const card of Object.values(cards)
+    const card of Object.values(cardSchemas)
   ) {
     cardStmt.run(
       Object.fromEntries(
@@ -350,26 +356,26 @@ const makeNote = (
 };
 
 const makeCards = (
-  noteType: NoteType,
+  note: Note,
+  deckId: number,
   noteId: number,
-  fields: string[],
   idGen: IdGen,
 ): Schema.Card[] =>
-  noteType.isCloze
-    ? makeClozeCards(noteType, noteId, fields, idGen)
-    : makeNormalCards(noteType, noteId, fields, idGen);
+  note.noteType.isCloze
+    ? makeClozeCards(note, deckId, noteId, idGen)
+    : makeNormalCards(note, deckId, noteId, idGen);
 
 const makeNormalCards = (
-  noteType: NoteType,
+  note: Note,
+  deckId: number,
   noteId: number,
-  fields: string[],
   idGen: IdGen,
 ): Schema.Card[] => {
-  const fieldNames = noteType.fields.map((field) =>
+  const fieldNames = note.noteType.fields.map((field) =>
     typeof field === "string" ? field : field.name
   );
 
-  return noteType.templates.flatMap((template, ord) => {
+  return note.noteType.templates.flatMap((template, ord) => {
     for (
       const [, fieldName] of template.question.matchAll(
         /{{(?:type\:|hint\:|#|\/)?([^}]+)}}/g,
@@ -377,25 +383,25 @@ const makeNormalCards = (
     ) {
       const index = fieldNames.indexOf(fieldName);
       if (index < 0) continue;
-      if (!fields[index]) return [];
+      if (!note.fields[index]) return [];
     }
 
     return [makeCard({
       ord,
       noteId,
-      deckId: noteType.deckId ?? 1,
+      deckId,
       created: noteId,
     }, idGen)];
   });
 };
 
 const makeClozeCards = (
-  noteType: NoteType,
+  note: Note,
+  deckId: number,
   noteId: number,
-  fields: string[],
   idGen: IdGen,
 ): Schema.Card[] => {
-  const qfmt = noteType.templates[0].question;
+  const qfmt = note.noteType.templates[0].question;
   const clozeReplacements = new Set(
     [
       ...qfmt.matchAll(/{{[^}]*?cloze:(?:[^}]?:)*(.+?)}}/g),
@@ -407,11 +413,11 @@ const makeClozeCards = (
 
   const cardOrds = new Set(
     [...clozeReplacements].flatMap((fieldName) => {
-      const fieldIndex = noteType.fields
+      const fieldIndex = note.noteType.fields
         .findIndex((field) =>
           (typeof field === "string" ? field : field.name) === fieldName
         );
-      const fieldValue = fieldIndex < 0 ? "" : fields[fieldIndex];
+      const fieldValue = fieldIndex < 0 ? "" : note.fields[fieldIndex];
       const updates = [...fieldValue.matchAll(/{{c(\d+)::.+?}}/g)].map((
         [_, m],
       ) => parseInt(m)).flatMap((m) => m >= 1 ? [m - 1] : []);
@@ -424,7 +430,7 @@ const makeClozeCards = (
     makeCard({
       ord: cardOrd,
       noteId,
-      deckId: noteType.deckId ?? 1,
+      deckId,
       created: noteId,
     }, idGen)
   );
@@ -464,12 +470,13 @@ const makeCard = (
 
 const makeNoteType = (
   noteType: NoteType,
+  deckId: number | undefined,
   idGen: IdGen,
 ): Schema.Model => ({
   vers: [],
   name: noteType.name,
   tags: [],
-  did: noteType.deckId ?? 1,
+  did: deckId ?? 1,
   usn: -1,
   req: [[0, "all", [0]]],
   flds: noteType.fields.map((field, index) => makeField(field, index)),
