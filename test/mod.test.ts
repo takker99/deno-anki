@@ -43,7 +43,7 @@ describe("Anki package", () => {
     name: "Basic",
     id: new Date().getTime(),
     fields: ["Front", "Back"],
-    deckId: deck.id,
+    deck,
     templates: [{
       name: "Card 1",
       question: "{{Front}}",
@@ -93,9 +93,9 @@ describe("Anki package", () => {
     );
     await Deno.writeFile(destUnpackedDb, ankiDBRestored);
     const db = new DB(destUnpackedDb, { mode: "read" });
-    const result = db.queryEntries<{ flds: string }>(`SELECT
-                                                                    notes.flds as flds
-                                                                    from cards JOIN notes where cards.nid = notes.id ORDER BY cards.id`);
+    const result = db.queryEntries<{ flds: string }>(
+      "SELECT notes.flds as flds from cards JOIN notes where cards.nid = notes.id ORDER BY cards.id",
+    );
     db.close();
 
     // compare content from just created db with original list of cards
@@ -182,7 +182,7 @@ describe("Anki package", () => {
       name: "Basic",
       id: new Date().getTime(),
       fields: ["Front", "Hint"],
-      deckId: deck.id,
+      deck,
       isCloze: true,
       templates: [{
         name: "Cloze",

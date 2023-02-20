@@ -32,8 +32,8 @@ export interface NoteType {
 
   updated?: number;
 
-  /** @default 1 */
-  deckId?: number;
+  /** @default "default" deck is selected */
+  deck?: Deck;
 
   fields: Field[] | string[];
   templates: Template[];
@@ -79,44 +79,12 @@ export const makeCollection = (
     timeLim: 0,
   };
 
-  const modelSchemas: Record<number, Schema.Model> = {};
-  const noteSchemas: Record<number, Schema.Note> = {};
-  const cardSchemas: Record<number, Schema.Card> = {};
+  const deckSchemas: Record<number, Schema.Deck> = {};
+  const deckIdMap = new Map<Deck, number>();
   {
-    const modelIdGen = makeIdGenerator();
-    const noteIdGen = makeIdGenerator();
-    const cardIdGen = makeIdGenerator();
-    const noteTypes = new Set(notes.map((note) => note.noteType));
-    const noteTypeIdMap = new Map<NoteType, number>();
-    for (const noteType of noteTypes) {
-      const model = makeNoteType(noteType, modelIdGen);
-      modelSchemas[model.id] = model;
-      noteTypeIdMap.set(noteType, model.id);
-    }
-    for (const note of notes) {
-      const noteTypeId = noteTypeIdMap.get(note.noteType);
-      if (noteTypeId === undefined) {
-        throw Error("Note type id must be already generated");
-      }
-      const noteScheme = makeNote(note, noteTypeId, noteIdGen);
-      noteSchemas[noteScheme.id] = noteScheme;
-      for (
-        const card of makeCards(
-          note.noteType,
-          noteScheme.id,
-          note.fields,
-          cardIdGen,
-        )
-      ) {
-        cardSchemas[card.id] = card;
-      }
-    }
-  }
-
-  const deckIdGen = makeIdGenerator();
-  deckIdGen(1);
-  const deckSchemas: Record<number, Schema.Deck> = {
-    1: {
+    const deckIdGen = makeIdGenerator();
+    deckIdGen(1);
+    deckSchemas[1] = {
       collapsed: false,
       conf: 1,
       desc: "",
@@ -131,14 +99,51 @@ export const makeCollection = (
       revToday: [0, 0],
       timeToday: [0, 0],
       usn: 0,
-    },
-    ...Object.fromEntries(
-      [...new Set(notes.map((note) => note.deck))].map((deck) => {
-        const d = makeDeck(deck, deckIdGen);
-        return [d.id, d];
-      }),
-    ),
-  };
+    };
+    const decks = new Set(
+      notes.flatMap((note) =>
+        note.noteType.deck ? [note.deck, note.noteType.deck] : [note.deck]
+      ),
+    );
+    for (const deck of decks) {
+      const d = makeDeck(deck, deckIdGen);
+      deckSchemas[d.id] = d;
+      deckIdMap.set(deck, d.id);
+    }
+  }
+  const modelSchemas: Record<number, Schema.Model> = {};
+  const noteTypeIdMap = new Map<NoteType, number>();
+  {
+    const modelIdGen = makeIdGenerator();
+    const noteTypes = new Set(notes.map((note) => note.noteType));
+    for (const noteType of noteTypes) {
+      const deckId = noteType.deck ? deckIdMap.get(noteType.deck) : undefined;
+      const model = makeNoteType(noteType, deckId, modelIdGen);
+      modelSchemas[model.id] = model;
+      noteTypeIdMap.set(noteType, model.id);
+    }
+  }
+  const noteSchemas: Record<number, Schema.Note> = {};
+  const cardSchemas: Record<number, Schema.Card> = {};
+  {
+    const cardIdGen = makeIdGenerator();
+    const noteIdGen = makeIdGenerator();
+    for (const note of notes) {
+      const noteTypeId = noteTypeIdMap.get(note.noteType);
+      if (noteTypeId === undefined) {
+        throw Error("Note type id must be already generated");
+      }
+      const deckId = deckIdMap.get(note.deck);
+      if (deckId === undefined) {
+        throw Error("Deck id must be already generated");
+      }
+      const n = makeNote(note, noteTypeId, noteIdGen);
+      noteSchemas[n.id] = n;
+      for (const card of makeCards(note, deckId, n.id, cardIdGen)) {
+        cardSchemas[card.id] = card;
+      }
+    }
+  }
 
   const dconf: Record<number, Schema.DConf> = {
     1: {
@@ -351,26 +356,26 @@ const makeNote = (
 };
 
 const makeCards = (
-  noteType: NoteType,
+  note: Note,
+  deckId: number,
   noteId: number,
-  fields: string[],
   idGen: IdGen,
 ): Schema.Card[] =>
-  noteType.isCloze
-    ? makeClozeCards(noteType, noteId, fields, idGen)
-    : makeNormalCards(noteType, noteId, fields, idGen);
+  note.noteType.isCloze
+    ? makeClozeCards(note, deckId, noteId, idGen)
+    : makeNormalCards(note, deckId, noteId, idGen);
 
 const makeNormalCards = (
-  noteType: NoteType,
+  note: Note,
+  deckId: number,
   noteId: number,
-  fields: string[],
   idGen: IdGen,
 ): Schema.Card[] => {
-  const fieldNames = noteType.fields.map((field) =>
+  const fieldNames = note.noteType.fields.map((field) =>
     typeof field === "string" ? field : field.name
   );
 
-  return noteType.templates.flatMap((template, ord) => {
+  return note.noteType.templates.flatMap((template, ord) => {
     for (
       const [, fieldName] of template.question.matchAll(
         /{{(?:type\:|hint\:|#|\/)?([^}]+)}}/g,
@@ -378,25 +383,25 @@ const makeNormalCards = (
     ) {
       const index = fieldNames.indexOf(fieldName);
       if (index < 0) continue;
-      if (!fields[index]) return [];
+      if (!note.fields[index]) return [];
     }
 
     return [makeCard({
       ord,
       noteId,
-      deckId: noteType.deckId ?? 1,
+      deckId,
       created: noteId,
     }, idGen)];
   });
 };
 
 const makeClozeCards = (
-  noteType: NoteType,
+  note: Note,
+  deckId: number,
   noteId: number,
-  fields: string[],
   idGen: IdGen,
 ): Schema.Card[] => {
-  const qfmt = noteType.templates[0].question;
+  const qfmt = note.noteType.templates[0].question;
   const clozeReplacements = new Set(
     [
       ...qfmt.matchAll(/{{[^}]*?cloze:(?:[^}]?:)*(.+?)}}/g),
@@ -408,11 +413,11 @@ const makeClozeCards = (
 
   const cardOrds = new Set(
     [...clozeReplacements].flatMap((fieldName) => {
-      const fieldIndex = noteType.fields
+      const fieldIndex = note.noteType.fields
         .findIndex((field) =>
           (typeof field === "string" ? field : field.name) === fieldName
         );
-      const fieldValue = fieldIndex < 0 ? "" : fields[fieldIndex];
+      const fieldValue = fieldIndex < 0 ? "" : note.fields[fieldIndex];
       const updates = [...fieldValue.matchAll(/{{c(\d+)::.+?}}/g)].map((
         [_, m],
       ) => parseInt(m)).flatMap((m) => m >= 1 ? [m - 1] : []);
@@ -425,7 +430,7 @@ const makeClozeCards = (
     makeCard({
       ord: cardOrd,
       noteId,
-      deckId: noteType.deckId ?? 1,
+      deckId,
       created: noteId,
     }, idGen)
   );
@@ -465,12 +470,13 @@ const makeCard = (
 
 const makeNoteType = (
   noteType: NoteType,
+  deckId: number | undefined,
   idGen: IdGen,
 ): Schema.Model => ({
   vers: [],
   name: noteType.name,
   tags: [],
-  did: noteType.deckId ?? 1,
+  did: deckId ?? 1,
   usn: -1,
   req: [[0, "all", [0]]],
   flds: noteType.fields.map((field, index) => makeField(field, index)),
