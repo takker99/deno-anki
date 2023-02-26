@@ -312,9 +312,10 @@ export const makeCollection = (
 export const makePackage = (
   ankiDB: Uint8Array,
   media: Record<string, InputFormats> | Map<string, InputFormats>,
-  zip: JSZip,
+  Zip: new () => JSZip,
   options?: Omit<JSZip.JSZipGeneratorOptions<"blob">, "type">,
 ): Promise<Blob> => {
+  const zip = new Zip();
   zip.file("collection.anki2", ankiDB);
 
   const entries = [

@@ -76,7 +76,10 @@ describe("Anki package", () => {
     const image = await Deno.readFile(
       new URL("./fixtures/anki.png", import.meta.url),
     );
-    const apkg = await makePackage(ankiDB, { "anki.png": image }, new JSZip());
+    const apkg = await makePackage(ankiDB, { "anki.png": image }, JSZip, {
+      compression: "DEFLATE",
+      compressionOptions: { level: 9 },
+    });
 
     const unzip = new JSZip();
     await unzip.loadAsync(apkg);
@@ -139,7 +142,7 @@ describe("Anki package", () => {
       sql,
     );
 
-    const apkg = await makePackage(ankiDB, {}, new JSZip());
+    const apkg = await makePackage(ankiDB, {}, JSZip);
 
     const unzip = new JSZip();
     await unzip.loadAsync(apkg);
@@ -221,7 +224,7 @@ describe("Anki package", () => {
       sql,
     );
 
-    const apkg = await makePackage(ankiDB, {}, new JSZip());
+    const apkg = await makePackage(ankiDB, {}, JSZip);
 
     const unzip = new JSZip();
     await unzip.loadAsync(apkg);
